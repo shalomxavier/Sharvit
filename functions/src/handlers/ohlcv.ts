@@ -1,22 +1,14 @@
 import type { Request, Response } from 'express';
 import { binanceService } from '../services/binanceService';
-import { cacheService } from '../services/cacheService';
 import { getIntervalDurationMs } from '../utils/calculations';
 import { allowCors } from '../utils/cors';
 
 export const getOHLCVHandler = async (req: Request, res: Response): Promise<void> => {
-  if (allowCors(req, res)) {
+  if (!allowCors(req, res)) {
     return;
   }
 
   try {
-    const cacheKey = 'ohlcv';
-    const cached = await cacheService.get(cacheKey);
-
-    if (cached) {
-      res.json(cached);
-      return;
-    }
 
     const interval = process.env.INTERVAL || '15m';
     const intervalMs = getIntervalDurationMs(interval);
@@ -47,12 +39,6 @@ export const getOHLCVHandler = async (req: Request, res: Response): Promise<void
       timeframe: interval
     };
 
-    const ttlSeconds = Math.max(
-      Math.ceil(intervalMs / 1000),
-      parseInt(process.env.CACHE_TTL_MARKET_DATA || '5')
-    );
-
-    await cacheService.set(cacheKey, response, ttlSeconds);
     res.json(response);
   } catch (error: any) {
     console.error('Error fetching OHLCV data:', error?.message || error);

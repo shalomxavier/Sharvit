@@ -223,7 +223,7 @@ const Dashboard: React.FC = () => {
     },
     { label: 'ATR-14', value: atr14, formatter: formatFixed(3), titleClassName: blueTitleClass, valueClassName: blueValueClass },
     { label: 'ADX-14', value: adx14, formatter: formatFixed(2), titleClassName: blueTitleClass, valueClassName: blueValueClass }
-  ].filter(entry => entry.value !== null);
+  ];
 
   const openInterestIndicators = openInterestData?.indicators;
   const openInterestMaValue = openInterestData?.openInterestMa ?? null;
@@ -397,8 +397,12 @@ const Dashboard: React.FC = () => {
                   <p className={`text-xl font-bold ${entry.titleClassName ?? ''}`.trim()}>{entry.label}</p>
                 </div>
                 <div className="text-right">
-                  <span className={`text-2xl font-bold ${entry.valueClassName ?? ''}`.trim()}>{entry.formatter(entry.value ?? 0)}</span>
-                  {entry.secondaryValue !== null && entry.secondaryValue !== undefined && entry.secondaryFormatter && (
+                  <span className={`text-2xl font-bold ${entry.valueClassName ?? ''}`.trim()}>
+                    {entry.value !== null && entry.value !== undefined
+                      ? entry.formatter(entry.value)
+                      : 'N/A'}
+                  </span>
+                  {entry.value !== null && entry.value !== undefined && entry.secondaryValue !== null && entry.secondaryValue !== undefined && entry.secondaryFormatter && (
                     <p className="text-sm text-gray-500 mt-1">
                       ({entry.secondaryFormatter(entry.secondaryValue)})
                     </p>

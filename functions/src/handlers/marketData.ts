@@ -1,6 +1,5 @@
 import type { Request, Response } from 'express';
 import { binanceService } from '../services/binanceService';
-import { cacheService } from '../services/cacheService';
 import {
   getIntervalDurationMs,
   computeEma,
@@ -23,7 +22,6 @@ export const getMarketDataHandler = async (req: Request, res: Response): Promise
   }
 
   try {
-    const cacheKey = 'market-data';
     const interval = process.env.INTERVAL || '15m';
     const intervalMs = getIntervalDurationMs(interval);
     const configuredHistory = Math.max(
@@ -33,13 +31,6 @@ export const getMarketDataHandler = async (req: Request, res: Response): Promise
     const requiredHistory = Math.max(configuredHistory, REQUIRED_RSI_SOURCE);
     const maxCandlesConfig = parsePositiveInt(process.env.MAX_CANDLES, requiredHistory + 1);
     const fetchLimit = Math.max(requiredHistory + 1, maxCandlesConfig);
-
-    const cached = await cacheService.get(cacheKey);
-
-    if (cached?.data && cached?.nextUpdateTime && Date.now() < cached.nextUpdateTime) {
-      res.json(cached.data);
-      return;
-    }
 
     const klineData = await binanceService.getKlines(fetchLimit);
 
@@ -150,13 +141,6 @@ export const getMarketDataHandler = async (req: Request, res: Response): Promise
       }))
     };
 
-    const nextUpdateTime = latestClosedCandle.closeTime + intervalMs;
-    const cacheTtlSeconds = Math.max(
-      Math.ceil(intervalMs / 1000),
-      parseInt(process.env.CACHE_TTL_MARKET_DATA || '5')
-    );
-
-    await cacheService.set(cacheKey, { data: response, nextUpdateTime }, cacheTtlSeconds);
     res.json(response);
   } catch (error: any) {
     if (error?.code === 'INSUFFICIENT_MARKET_DATA' || error?.code === 'INVALID_HISTORY_REQUEST') {

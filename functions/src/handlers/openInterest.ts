@@ -1,6 +1,5 @@
 import type { Request, Response } from 'express';
 import { binanceService } from '../services/binanceService';
-import { cacheService } from '../services/cacheService';
 import {
   getIntervalDurationMs,
   getOpenInterestPeriod,
@@ -15,14 +14,6 @@ export const getOpenInterestHandler = async (req: Request, res: Response): Promi
   }
 
   try {
-    const cacheKey = 'open-interest';
-    const cacheTtl = parseInt(process.env.CACHE_TTL_OPEN_INTEREST || '5', 10);
-    const cached = await cacheService.get(cacheKey);
-
-    if (cached) {
-      res.json(cached);
-      return;
-    }
 
     const interval = process.env.INTERVAL || '15m';
     const intervalMs = getIntervalDurationMs(interval);
@@ -160,7 +151,6 @@ export const getOpenInterestHandler = async (req: Request, res: Response): Promi
       }
     };
 
-    await cacheService.set(cacheKey, response, cacheTtl);
     res.json(response);
   } catch (error: any) {
     console.error('Error fetching open interest:', error?.message || error);

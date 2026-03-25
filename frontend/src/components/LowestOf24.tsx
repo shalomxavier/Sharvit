@@ -31,6 +31,8 @@ const LowestOf24: React.FC = () => {
   const [buySignal, setBuySignal] = useState<{ timestamp: number; price: number } | null>(null);
   const { data: livePriceData } = useLivePrice(5000);
   const previousAllRulesMetRef = useRef(false);
+  const previousRuleStatusesRef = useRef<Record<string, boolean>>({});
+  const [lastTrueTimestamps, setLastTrueTimestamps] = useState<Record<string, number>>({});
 
   const fetchMarketData = useCallback(async () => {
     try {
@@ -228,6 +230,29 @@ const LowestOf24: React.FC = () => {
   const allRulesMet = ruleStatuses.every(rule => rule.isMet);
 
   useEffect(() => {
+    const updates: Record<string, number> = {};
+
+    ruleStatuses.forEach(rule => {
+      const wasMet = previousRuleStatusesRef.current[rule.label] ?? false;
+      if (rule.isMet && !wasMet) {
+        updates[rule.label] = Date.now();
+      }
+    });
+
+    if (Object.keys(updates).length) {
+      setLastTrueTimestamps(prev => ({
+        ...prev,
+        ...updates
+      }));
+    }
+
+    previousRuleStatusesRef.current = ruleStatuses.reduce((acc, rule) => {
+      acc[rule.label] = rule.isMet;
+      return acc;
+    }, {} as Record<string, boolean>);
+  }, [ruleStatuses]);
+
+  useEffect(() => {
     if (allRulesMet && !previousAllRulesMetRef.current && livePrice !== null) {
       setBuySignal({ timestamp: Date.now(), price: livePrice });
     }
@@ -338,13 +363,6 @@ const LowestOf24: React.FC = () => {
           />
 
           <DataCard
-            title="ADX-14"
-            value={adx14 ?? 0}
-            loading={loading}
-            formatValue={(value) => formatFixed(2)(value)}
-          />
-
-          <DataCard
             title="EMA-6"
             value={ema6 ?? 0}
             loading={loading}
@@ -367,7 +385,12 @@ const LowestOf24: React.FC = () => {
                 key={rule.label}
                 className={rule.isMet ? 'text-green-600' : 'text-red-500'}
               >
-                {rule.label}
+                <span>{rule.label}</span>
+                <span className="block text-xs font-normal text-gray-600">
+                  {lastTrueTimestamps[rule.label]
+                    ? `Last true: ${new Date(lastTrueTimestamps[rule.label]).toLocaleTimeString()}`
+                    : 'Last true: Never'}
+                </span>
               </li>
             ))}
           </ul>
