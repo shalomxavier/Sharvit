@@ -226,6 +226,22 @@ class TradingService {
 
       if (!activeCollections.empty) {
         const activeDoc = activeCollections.docs[0];
+        const activeCollection = activeDoc.data() as TradingCollection;
+        
+        // If the active collection has a buy signal, don't refresh it
+        if (activeCollection.buySignal) {
+          console.log(`Collection ${activeDoc.id} has buy signal - skipping refresh`);
+          return;
+        }
+
+        // If the trigger is from the exact same lowest candle, don't reset
+        // This prevents resetting the trigger time and rules continuously during the 15-minute window
+        // where this candle remains the "latest closed candle"
+        if (activeCollection.triggerPrice === conditions.lastLow) {
+          console.log(`Collection ${activeDoc.id} already triggered at price ${conditions.lastLow} - skipping reset`);
+          return;
+        }
+
         const now = Timestamp.now();
 
         const resetRules: Record<string, RuleState> = {};
