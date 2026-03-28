@@ -10,5 +10,10 @@ service cloud.firestore {
     match /logs/{document} {
       allow read, write: if true;
     }
+    
+    // Allow read access to trading_collections collection
+    match /trading_collections/{document} {
+      allow read: if true;
+    }
   }
 }

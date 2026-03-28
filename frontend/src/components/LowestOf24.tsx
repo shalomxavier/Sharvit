@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiService, MarketData, OpenInterestData } from '../services/apiService';
 import DataCard from './DataCard';
 import LivePriceBanner from './LivePriceBanner';
+import TradingCollectionsTable from './TradingCollectionsTable';
 import { useLivePrice } from '../hooks/useLivePrice';
 
 interface IndicatorEntry {
@@ -406,6 +407,11 @@ const LowestOf24: React.FC = () => {
               </p>
             </div>
           )}
+        </div>
+
+        {/* Trading Collections Table */}
+        <div className="mt-8">
+          <TradingCollectionsTable />
         </div>
 
         {lowHistoryOpen && (
