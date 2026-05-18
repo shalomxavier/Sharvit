@@ -11,8 +11,13 @@ export const tradingScheduler = onSchedule({
   console.log('Trading scheduler triggered at:', new Date().toISOString());
   
   try {
+    // Process original full strategy
     await tradingService.processTrading();
     console.log('Trading process completed successfully');
+    
+    // Process pure lowest of 24 strategy
+    await tradingService.processPureLowestOf24();
+    console.log('Pure lowest of 24 process completed successfully');
   } catch (error) {
     console.error('Trading scheduler error:', error);
     

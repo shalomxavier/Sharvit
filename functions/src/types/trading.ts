@@ -11,9 +11,10 @@ export interface TradingCollection {
   status: 'active' | 'completed';
   triggerTime: Timestamp;
   triggerPrice: number;
-  rules: {
+  rules?: {
     [ruleKey: string]: RuleState;
   };
+  rule?: RuleState;
   buySignal?: {
     time: Timestamp;
     price: number;

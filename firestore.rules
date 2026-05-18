@@ -15,5 +15,10 @@ service cloud.firestore {
     match /trading_collections/{document} {
       allow read: if true;
     }
+
+    // Allow read access to pure_lowest_of_24_collections collection
+    match /pure_lowest_of_24_collections/{document} {
+      allow read: if true;
+    }
   }
 }

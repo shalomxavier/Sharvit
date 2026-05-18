@@ -428,6 +428,17 @@ const Dashboard: React.FC = () => {
               <span className="text-sm text-gray-500">Click to open →</span>
             </div>
           </div>
+          <div 
+            className="rounded-lg border px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
+            onClick={() => navigate('/pure-lowest-of-24')}
+          >
+            <div>
+              <p className="text-xl font-bold">pure lowest of 24</p>
+            </div>
+            <div className="text-right">
+              <span className="text-sm text-gray-500">Click to open →</span>
+            </div>
+          </div>
         </div>
       </div>
 

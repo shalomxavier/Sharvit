@@ -28,6 +28,7 @@ if (!getApps().length) {
 class TradingService {
   private db = getFirestore();
   private collectionsRef = this.db.collection('trading_collections');
+  private pureCollectionsRef = this.db.collection('pure_lowest_of_24_collections');
 
   async processTrading(): Promise<void> {
     try {
@@ -56,6 +57,43 @@ class TradingService {
 
     } catch (error) {
       console.error('Error in trading process:', error);
+      throw error;
+    }
+  }
+
+  async processPureLowestOf24(): Promise<void> {
+    try {
+      console.log('Starting pure lowest of 24 trading process...');
+      
+      // Get market conditions
+      const marketConditions = await this.getMarketConditions();
+      if (!marketConditions) {
+        console.log('Market data unavailable, pausing pure lowest of 24 evaluations');
+        return;
+      }
+
+      console.log('Market conditions for pure strategy:', marketConditions);
+
+      // Evaluate only the trigger rule for pure strategy
+      const triggerRule = {
+        ruleKey: RULE_KEYS.TRIGGER,
+        label: RULE_LABELS[RULE_KEYS.TRIGGER],
+        isMet: marketConditions.lastLow <= marketConditions.lowestOf24h,
+        currentValue: marketConditions.lastLow,
+        comparisonValue: marketConditions.lowestOf24h
+      };
+      console.log('Pure strategy trigger rule:', triggerRule);
+
+      // Check for new collection trigger
+      if (triggerRule.isMet) {
+        await this.handlePureTriggerCondition(marketConditions, triggerRule);
+      }
+
+      // Process active collections for pure strategy
+      await this.processPureActiveCollections(marketConditions, triggerRule);
+
+    } catch (error) {
+      console.error('Error in pure lowest of 24 trading process:', error);
       throw error;
     }
   }
@@ -297,6 +335,80 @@ class TradingService {
     }
   }
 
+  private async handlePureTriggerCondition(conditions: MarketConditions, triggerRule: RuleEvaluationResult): Promise<void> {
+    try {
+      // Check if there's already an active collection
+      const activeCollections = await this.pureCollectionsRef
+        .where('status', '==', 'active')
+        .limit(1)
+        .get();
+
+      if (!activeCollections.empty) {
+        const activeDoc = activeCollections.docs[0];
+        const activeCollection = activeDoc.data() as TradingCollection;
+        
+        // If the active collection has a buy signal, don't refresh it
+        if (activeCollection.buySignal) {
+          console.log(`Pure collection ${activeDoc.id} has buy signal - skipping refresh`);
+          return;
+        }
+
+        // If the trigger is from the exact same lowest candle, don't reset
+        if (activeCollection.triggerPrice === conditions.lastLow) {
+          console.log(`Pure collection ${activeDoc.id} already triggered at price ${conditions.lastLow} - skipping reset`);
+          return;
+        }
+
+        const now = Timestamp.now();
+
+        await activeDoc.ref.update({
+          triggerTime: now,
+          triggerPrice: conditions.lastLow,
+          rule: {
+            isMet: true,
+            metAt: now,
+            metPrice: conditions.lastLow
+          },
+          buySignal: null,
+          sellSignal: null,
+          status: 'active',
+          updatedAt: now
+        });
+
+        console.log(`Reset pure trading collection ${activeDoc.id} due to new trigger`);
+        return;
+      }
+
+      console.log('Creating new pure trading collection...');
+
+      // Create new collection
+      const now = Timestamp.now();
+      const collectionId = `collection_${Date.now()}`;
+
+      const newCollection: TradingCollection = {
+        id: collectionId,
+        status: 'active',
+        triggerTime: now,
+        triggerPrice: conditions.lastLow,
+        rules: {},
+        rule: {
+          isMet: true,
+          metAt: now,
+          metPrice: conditions.lastLow
+        },
+        createdAt: now,
+        updatedAt: now
+      };
+
+      await this.pureCollectionsRef.doc(collectionId).set(newCollection);
+      console.log(`Created new pure trading collection: ${collectionId}`);
+
+    } catch (error) {
+      console.error('Error handling pure trigger condition:', error);
+      throw error;
+    }
+  }
+
   private async processActiveCollections(conditions: MarketConditions, tradingRules: TradingRules): Promise<void> {
     try {
       const activeCollections = await this.collectionsRef
@@ -310,6 +422,23 @@ class TradingService {
 
     } catch (error) {
       console.error('Error processing active collections:', error);
+      throw error;
+    }
+  }
+
+  private async processPureActiveCollections(conditions: MarketConditions, triggerRule: RuleEvaluationResult): Promise<void> {
+    try {
+      const activeCollections = await this.pureCollectionsRef
+        .where('status', '==', 'active')
+        .get();
+
+      for (const doc of activeCollections.docs) {
+        const collection = doc.data() as TradingCollection;
+        await this.processPureCollection(doc.id, collection, conditions, triggerRule);
+      }
+
+    } catch (error) {
+      console.error('Error processing pure active collections:', error);
       throw error;
     }
   }
@@ -358,9 +487,9 @@ class TradingService {
       if (!updates.sellSignal) {
         // Update rule states (rules can only go from false to true, never back)
         for (const rule of tradingRules.rules) {
-          const currentRuleState = collection.rules[rule.ruleKey];
+          const currentRuleState = collection.rules?.[rule.ruleKey];
           
-          if (!currentRuleState.isMet && rule.isMet) {
+          if (currentRuleState && !currentRuleState.isMet && rule.isMet) {
             updates[`rules.${rule.ruleKey}`] = {
               isMet: true,
               metAt: Timestamp.now(),
@@ -374,8 +503,8 @@ class TradingService {
         // Check if all rules are now met for buy signal
         if (!collection.buySignal) {
           const allRulesMet = tradingRules.rules.every(rule => {
-            const ruleState = collection.rules[rule.ruleKey];
-            return ruleState.isMet || rule.isMet;
+            const ruleState = collection.rules?.[rule.ruleKey];
+            return ruleState?.isMet || rule.isMet;
           });
 
           if (allRulesMet) {
@@ -397,6 +526,68 @@ class TradingService {
 
     } catch (error) {
       console.error(`Error processing collection ${docId}:`, error);
+      throw error;
+    }
+  }
+
+  private async processPureCollection(
+    docId: string,
+    collection: TradingCollection,
+    conditions: MarketConditions,
+    triggerRule: RuleEvaluationResult
+  ): Promise<void> {
+    try {
+      let hasUpdates = false;
+      const updates: any = {
+        updatedAt: Timestamp.now()
+      };
+
+      // Check exit conditions first if we have a buy signal
+      if (collection.buySignal) {
+        const buyPrice = collection.buySignal.price;
+        const currentPrice = conditions.livePrice;
+        
+        if (currentPrice >= buyPrice * PROFIT_THRESHOLD) {
+          // Profit exit
+          updates.sellSignal = {
+            time: Timestamp.now(),
+            price: currentPrice,
+            status: 'profit'
+          };
+          updates.status = 'completed';
+          hasUpdates = true;
+          console.log(`Pure collection ${docId} completed with profit: ${currentPrice} >= ${buyPrice * PROFIT_THRESHOLD}`);
+        } else if (currentPrice <= buyPrice * LOSS_THRESHOLD) {
+          // Loss exit
+          updates.sellSignal = {
+            time: Timestamp.now(),
+            price: currentPrice,
+            status: 'loss'
+          };
+          updates.status = 'completed';
+          hasUpdates = true;
+          console.log(`Pure collection ${docId} completed with loss: ${currentPrice} <= ${buyPrice * LOSS_THRESHOLD}`);
+        }
+      }
+
+      // If not exiting and no buy signal yet, generate buy signal immediately since rule is always met
+      if (!updates.sellSignal && !collection.buySignal) {
+        updates.buySignal = {
+          time: Timestamp.now(),
+          price: conditions.livePrice
+        };
+        hasUpdates = true;
+        console.log(`Buy signal generated for pure collection ${docId} at price ${conditions.livePrice}`);
+      }
+
+      // Apply updates if any
+      if (hasUpdates) {
+        await this.pureCollectionsRef.doc(docId).update(updates);
+        console.log(`Updated pure collection ${docId}`);
+      }
+
+    } catch (error) {
+      console.error(`Error processing pure collection ${docId}:`, error);
       throw error;
     }
   }
