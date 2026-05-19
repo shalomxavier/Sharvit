@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard';
 import LivePriceBanner from './components/LivePriceBanner';
 import LowestOf24 from './components/LowestOf24';
 import PureLowestOf24 from './components/PureLowestOf24';
+import LowestOf24_3and6 from './components/LowestOf24_3and6';
 
 const App: React.FC = () => {
   return (
@@ -17,6 +18,7 @@ const App: React.FC = () => {
         } />
         <Route path="/lowest-of-24" element={<LowestOf24 />} />
         <Route path="/pure-lowest-of-24" element={<PureLowestOf24 />} />
+        <Route path="/lowest-of-24-3-and-6" element={<LowestOf24_3and6 />} />
       </Routes>
     </Router>
   );

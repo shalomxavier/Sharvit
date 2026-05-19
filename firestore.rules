@@ -20,5 +20,15 @@ service cloud.firestore {
     match /pure_lowest_of_24_collections/{document} {
       allow read: if true;
     }
+
+    // Allow read/write access to contacts collection
+    match /contacts/{document} {
+      allow read, write: if true;
+    }
+
+    // Allow read access to trading_collections_3and6 collection
+    match /trading_collections_3and6/{document} {
+      allow read: if true;
+    }
   }
 }

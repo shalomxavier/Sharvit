@@ -29,6 +29,7 @@ class TradingService {
   private db = getFirestore();
   private collectionsRef = this.db.collection('trading_collections');
   private pureCollectionsRef = this.db.collection('pure_lowest_of_24_collections');
+  private collections3and6Ref = this.db.collection('trading_collections_3and6');
 
   async processTrading(): Promise<void> {
     try {
@@ -98,6 +99,37 @@ class TradingService {
     }
   }
 
+  async processLowestOf24_3and6(): Promise<void> {
+    try {
+      console.log('Starting lowest of 24 3&6 trading process...');
+      
+      // Get market conditions
+      const marketConditions = await this.getMarketConditions();
+      if (!marketConditions) {
+        console.log('Market data unavailable, pausing lowest of 24 3&6 evaluations');
+        return;
+      }
+
+      console.log('Market conditions for 3&6 strategy:', marketConditions);
+
+      // Evaluate trading rules with EMA3 > EMA6 instead of EMA6 > EMA9
+      const tradingRules = this.evaluateRules3and6(marketConditions);
+      console.log('3&6 strategy rule evaluation:', tradingRules);
+
+      // Check for new collection trigger
+      if (tradingRules.trigger.isMet) {
+        await this.handleTriggerCondition3and6(marketConditions, tradingRules);
+      }
+
+      // Process active collections for 3&6 strategy
+      await this.processActiveCollections3and6(marketConditions, tradingRules);
+
+    } catch (error) {
+      console.error('Error in lowest of 24 3&6 trading process:', error);
+      throw error;
+    }
+  }
+
   private async getMarketConditions(): Promise<MarketConditions | null> {
     try {
       const interval = process.env.INTERVAL || '15m';
@@ -126,6 +158,7 @@ class TradingService {
       const closes = closedCandles.map(candle => parseFloat(candle.close));
       const volumes = closedCandles.map(candle => parseFloat(candle.volume));
       
+      const ema3 = computeEma(closes, 3);
       const ema6 = computeEma(closes, 6);
       const ema9 = computeEma(closes, 9);
       const closesForRsi = closes.slice(-REQUIRED_RSI_SOURCE);
@@ -149,6 +182,7 @@ class TradingService {
         volumeMa,
         timestamp: latestClosedCandle.closeTime,
         indicators: {
+          ema3,
           ema6,
           ema9,
           rsi14,
@@ -187,6 +221,7 @@ class TradingService {
         lastRsi: marketData.indicators.rsi14,
         previousRsi: marketData.indicators.rsi14Prev,
         previousLow: previousCandle?.low || 0,
+        lastEma3: marketData.indicators.ema3,
         lastEma6: marketData.indicators.ema6,
         lastEma9: marketData.indicators.ema9,
         livePrice,
@@ -226,6 +261,58 @@ class TradingService {
                conditions.lastEma6 > conditions.lastEma9,
         currentValue: conditions.lastEma6,
         comparisonValue: conditions.lastEma9
+      },
+      {
+        ruleKey: RULE_KEYS.BREAKOUT,
+        label: RULE_LABELS[RULE_KEYS.BREAKOUT],
+        isMet: conditions.livePrice > conditions.previousHigh,
+        currentValue: conditions.livePrice,
+        comparisonValue: conditions.previousHigh
+      },
+      {
+        ruleKey: RULE_KEYS.VOLUME_CONFIRMATION,
+        label: RULE_LABELS[RULE_KEYS.VOLUME_CONFIRMATION],
+        isMet: conditions.lastVolume > conditions.volumeMa,
+        currentValue: conditions.lastVolume,
+        comparisonValue: conditions.volumeMa
+      }
+    ];
+
+    const trigger: RuleEvaluationResult = {
+      ruleKey: RULE_KEYS.TRIGGER,
+      label: RULE_LABELS[RULE_KEYS.TRIGGER],
+      isMet: conditions.lastLow <= conditions.lowestOf24h,
+      currentValue: conditions.lastLow,
+      comparisonValue: conditions.lowestOf24h
+    };
+
+    return { trigger, rules };
+  }
+
+  private evaluateRules3and6(conditions: MarketConditions): TradingRules {
+    const rules: RuleEvaluationResult[] = [
+      {
+        ruleKey: RULE_KEYS.RSI_MOMENTUM,
+        label: RULE_LABELS[RULE_KEYS.RSI_MOMENTUM],
+        isMet: conditions.lastRsi !== null && conditions.previousRsi !== null && 
+               conditions.lastRsi > conditions.previousRsi,
+        currentValue: conditions.lastRsi,
+        comparisonValue: conditions.previousRsi
+      },
+      {
+        ruleKey: RULE_KEYS.PRICE_RECOVERY,
+        label: RULE_LABELS[RULE_KEYS.PRICE_RECOVERY],
+        isMet: conditions.lastLow > conditions.previousLow,
+        currentValue: conditions.lastLow,
+        comparisonValue: conditions.previousLow
+      },
+      {
+        ruleKey: 'ema3_crossover',
+        label: 'Last EMA3 > Last EMA6',
+        isMet: conditions.lastEma3 !== null && conditions.lastEma6 !== null && 
+               conditions.lastEma3 > conditions.lastEma6,
+        currentValue: conditions.lastEma3,
+        comparisonValue: conditions.lastEma6
       },
       {
         ruleKey: RULE_KEYS.BREAKOUT,
@@ -588,6 +675,155 @@ class TradingService {
 
     } catch (error) {
       console.error(`Error processing pure collection ${docId}:`, error);
+      throw error;
+    }
+  }
+
+  private async handleTriggerCondition3and6(conditions: MarketConditions, tradingRules: TradingRules): Promise<void> {
+    try {
+      const activeCollections = await this.collections3and6Ref
+        .where('status', '==', 'active')
+        .limit(1)
+        .get();
+
+      if (!activeCollections.empty) {
+        const activeDoc = activeCollections.docs[0];
+        const activeCollection = activeDoc.data() as TradingCollection;
+        
+        if (activeCollection.buySignal) {
+          console.log(`3&6 Collection ${activeDoc.id} has buy signal - skipping refresh`);
+          return;
+        }
+
+        if (activeCollection.triggerPrice === conditions.lastLow) {
+          console.log(`3&6 Collection ${activeDoc.id} already triggered at price ${conditions.lastLow} - skipping reset`);
+          return;
+        }
+
+        const now = Timestamp.now();
+        const resetRules: Record<string, RuleState> = {};
+        tradingRules.rules.forEach(rule => {
+          resetRules[rule.ruleKey] = { isMet: false };
+        });
+
+        await activeDoc.ref.update({
+          triggerTime: now,
+          triggerPrice: conditions.lastLow,
+          rules: resetRules,
+          buySignal: null,
+          sellSignal: null,
+          status: 'active',
+          updatedAt: now
+        });
+
+        console.log(`Reset 3&6 trading collection ${activeDoc.id} due to new trigger`);
+        return;
+      }
+
+      console.log('Creating new 3&6 trading collection...');
+      const now = Timestamp.now();
+      const collectionId = `collection_${Date.now()}`;
+      
+      const initialRules: { [key: string]: any } = {};
+      tradingRules.rules.forEach(rule => {
+        initialRules[rule.ruleKey] = { isMet: false };
+      });
+
+      const newCollection: TradingCollection = {
+        id: collectionId,
+        status: 'active',
+        triggerTime: now,
+        triggerPrice: conditions.lastLow,
+        rules: initialRules,
+        createdAt: now,
+        updatedAt: now
+      };
+
+      await this.collections3and6Ref.doc(collectionId).set(newCollection);
+      console.log(`Created new 3&6 trading collection: ${collectionId}`);
+
+    } catch (error) {
+      console.error('Error handling 3&6 trigger condition:', error);
+      throw error;
+    }
+  }
+
+  private async processActiveCollections3and6(conditions: MarketConditions, tradingRules: TradingRules): Promise<void> {
+    try {
+      const activeCollections = await this.collections3and6Ref
+        .where('status', '==', 'active')
+        .get();
+
+      for (const doc of activeCollections.docs) {
+        const collection = doc.data() as TradingCollection;
+        await this.processCollection3and6(doc.id, collection, conditions, tradingRules);
+      }
+
+    } catch (error) {
+      console.error('Error processing 3&6 active collections:', error);
+      throw error;
+    }
+  }
+
+  private async processCollection3and6(
+    docId: string,
+    collection: TradingCollection,
+    conditions: MarketConditions,
+    tradingRules: TradingRules
+  ): Promise<void> {
+    try {
+      let hasUpdates = false;
+      const updates: any = { updatedAt: Timestamp.now() };
+
+      if (collection.buySignal) {
+        const buyPrice = collection.buySignal.price;
+        const currentPrice = conditions.livePrice;
+        
+        if (currentPrice >= buyPrice * PROFIT_THRESHOLD) {
+          updates.sellSignal = { time: Timestamp.now(), price: currentPrice, status: 'profit' };
+          updates.status = 'completed';
+          hasUpdates = true;
+          console.log(`3&6 Collection ${docId} completed with profit`);
+        } else if (currentPrice <= buyPrice * LOSS_THRESHOLD) {
+          updates.sellSignal = { time: Timestamp.now(), price: currentPrice, status: 'loss' };
+          updates.status = 'completed';
+          hasUpdates = true;
+          console.log(`3&6 Collection ${docId} completed with loss`);
+        }
+      }
+
+      if (!updates.sellSignal) {
+        for (const rule of tradingRules.rules) {
+          const currentRuleState = collection.rules?.[rule.ruleKey];
+          
+          if (currentRuleState && !currentRuleState.isMet && rule.isMet) {
+            updates[`rules.${rule.ruleKey}`] = { isMet: true, metAt: Timestamp.now(), metPrice: rule.currentValue || conditions.livePrice };
+            hasUpdates = true;
+            console.log(`3&6 Rule ${rule.ruleKey} met for collection ${docId}`);
+          }
+        }
+
+        if (!collection.buySignal) {
+          const allRulesMet = tradingRules.rules.every(rule => {
+            const ruleState = collection.rules?.[rule.ruleKey];
+            return ruleState?.isMet || rule.isMet;
+          });
+
+          if (allRulesMet) {
+            updates.buySignal = { time: Timestamp.now(), price: conditions.livePrice };
+            hasUpdates = true;
+            console.log(`3&6 Buy signal generated for collection ${docId} at price ${conditions.livePrice}`);
+          }
+        }
+      }
+
+      if (hasUpdates) {
+        await this.collections3and6Ref.doc(docId).update(updates);
+        console.log(`Updated 3&6 collection ${docId}`);
+      }
+
+    } catch (error) {
+      console.error(`Error processing 3&6 collection ${docId}:`, error);
       throw error;
     }
   }

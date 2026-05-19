@@ -34,6 +34,7 @@ export interface MarketConditions {
   lastRsi: number | null;
   previousRsi: number | null;
   previousLow: number;
+  lastEma3: number | null;
   lastEma6: number | null;
   lastEma9: number | null;
   livePrice: number;

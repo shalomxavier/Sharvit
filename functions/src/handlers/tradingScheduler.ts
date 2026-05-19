@@ -18,6 +18,10 @@ export const tradingScheduler = onSchedule({
     // Process pure lowest of 24 strategy
     await tradingService.processPureLowestOf24();
     console.log('Pure lowest of 24 process completed successfully');
+    
+    // Process lowest of 24 3&6 strategy
+    await tradingService.processLowestOf24_3and6();
+    console.log('Lowest of 24 3&6 process completed successfully');
   } catch (error) {
     console.error('Trading scheduler error:', error);
     

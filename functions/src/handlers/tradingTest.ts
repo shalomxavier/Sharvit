@@ -28,8 +28,8 @@ export const tradingTestHandler = async (req: Request, res: Response): Promise<v
         status: collection.status,
         triggerTime: collection.triggerTime,
         triggerPrice: collection.triggerPrice,
-        rulesMetCount: Object.values(collection.rules).filter(rule => rule.isMet).length,
-        totalRules: Object.keys(collection.rules).length,
+        rulesMetCount: collection.rules ? Object.values(collection.rules).filter(rule => rule.isMet).length : 0,
+        totalRules: collection.rules ? Object.keys(collection.rules).length : 0,
         hasBuySignal: !!collection.buySignal,
         hasSellSignal: !!collection.sellSignal,
         sellStatus: collection.sellSignal?.status

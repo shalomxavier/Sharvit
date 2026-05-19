@@ -16,6 +16,7 @@ export interface MarketData {
   timeframe: string;
   trend?: 'bullish' | 'bearish' | 'neutral';
   indicators?: {
+    ema3?: number | null;
     ema6?: number | null;
     ema9?: number | null;
     ema20: number | null;

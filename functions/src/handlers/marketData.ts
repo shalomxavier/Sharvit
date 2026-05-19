@@ -72,6 +72,7 @@ export const getMarketDataHandler = async (req: Request, res: Response): Promise
 
     const closes = closedCandles.map(candle => parseFloat(candle.close));
     const volumes = closedCandles.map(candle => parseFloat(candle.volume));
+    const ema3 = computeEma(closes, 3);
     const ema6 = computeEma(closes, 6);
     const ema9 = computeEma(closes, 9);
     const ema20 = computeEma(closes, 20);
@@ -121,6 +122,7 @@ export const getMarketDataHandler = async (req: Request, res: Response): Promise
       timeframe: interval,
       trend,
       indicators: {
+        ema3,
         ema6,
         ema9,
         ema20,

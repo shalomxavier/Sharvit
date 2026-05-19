@@ -8,6 +8,8 @@ import { getLivePriceHandler } from './handlers/livePrice';
 import { getOpenInterestHandler } from './handlers/openInterest';
 import { tradingScheduler } from './handlers/tradingScheduler';
 import { tradingTestHandler } from './handlers/tradingTest';
+import { sendTestSmsHandler } from './handlers/sendTestSms';
+import { sendTestCallHandler } from './handlers/sendTestCall';
 
 // Initialize Firebase Admin
 if (!getApps().length) {
@@ -25,6 +27,8 @@ export const getOHLCV = onRequest(getOHLCVHandler);
 export const getLivePrice = onRequest(getLivePriceHandler);
 export const getOpenInterest = onRequest(getOpenInterestHandler);
 export const tradingTest = onRequest(tradingTestHandler);
+export const sendTestSms = onRequest(sendTestSmsHandler);
+export const sendTestCall = onRequest(sendTestCallHandler);
 
 // Scheduled functions
 export { tradingScheduler };
