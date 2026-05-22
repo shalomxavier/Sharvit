@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import ProfitLossSummary from './ProfitLossSummary';
 
 interface RuleState {
   isMet: boolean;
@@ -121,6 +122,8 @@ const PureLowestOf24Table: React.FC = () => {
   return (
     <div className="bg-white border rounded-lg p-6 shadow-sm">
       <h3 className="text-xl font-bold mb-4">Pure Lowest of 24 Collections</h3>
+      
+      <ProfitLossSummary collections={collections} />
       
       {collections.length === 0 ? (
         <div className="text-gray-500 text-center py-8">
