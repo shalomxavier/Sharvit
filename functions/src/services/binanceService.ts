@@ -62,7 +62,7 @@ class BinanceService {
   private futuresClient: AxiosInstance;
 
   constructor() {
-    this.baseURL = process.env.BINANCE_BASE_URL || 'https://api.binance.com';
+    this.baseURL = process.env.BINANCE_BASE_URL || 'https://data-api.binance.vision';
     this.futuresBaseURL = process.env.BINANCE_FUTURES_BASE_URL || 'https://fapi.binance.com';
     this.symbol = process.env.SYMBOL || 'BTCUSDT';
     this.interval = process.env.INTERVAL || '15m';
