@@ -1,5 +1,6 @@
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import type { CollectionReference } from 'firebase-admin/firestore';
 import { binanceService } from './binanceService';
 import {
   TradingCollection,
@@ -10,6 +11,7 @@ import {
   RULE_LABELS,
   PROFIT_THRESHOLD,
   LOSS_THRESHOLD,
+  LOSS_THRESHOLD_09,
   RuleState
 } from '../types/trading';
 import {
@@ -29,14 +31,15 @@ class TradingService {
   private db = getFirestore();
   private collectionsRef = this.db.collection('trading_collections');
   private pureCollectionsRef = this.db.collection('pure_lowest_of_24_collections');
+  private pure09CollectionsRef = this.db.collection('pure_lowest_of_24_09_collections');
   private collections3and6Ref = this.db.collection('trading_collections_3and6');
 
-  async processTrading(): Promise<void> {
+  async processTrading(providedMarketConditions?: MarketConditions): Promise<void> {
     try {
       console.log('Starting trading process...');
       
       // Get market conditions
-      const marketConditions = await this.getMarketConditions();
+      const marketConditions = providedMarketConditions ?? await this.getMarketConditions();
       if (!marketConditions) {
         console.log('Market data unavailable, pausing trading evaluations');
         return;
@@ -62,18 +65,44 @@ class TradingService {
     }
   }
 
-  async processPureLowestOf24(): Promise<void> {
+  async processPureLowestOf24(providedMarketConditions?: MarketConditions): Promise<void> {
+    await this.processPureLowestOf24WithLoss(
+      providedMarketConditions,
+      this.pureCollectionsRef,
+      LOSS_THRESHOLD,
+      'pure lowest of 24',
+      'pure'
+    );
+  }
+
+  async processPureLowestOf24_09(providedMarketConditions?: MarketConditions): Promise<void> {
+    await this.processPureLowestOf24WithLoss(
+      providedMarketConditions,
+      this.pure09CollectionsRef,
+      LOSS_THRESHOLD_09,
+      'pure lowest of 24 0.9% loss',
+      'pure 0.9%'
+    );
+  }
+
+  private async processPureLowestOf24WithLoss(
+    providedMarketConditions: MarketConditions | undefined,
+    collectionsRef: CollectionReference,
+    lossThreshold: number,
+    processLabel: string,
+    collectionLabel: string
+  ): Promise<void> {
     try {
-      console.log('Starting pure lowest of 24 trading process...');
+      console.log(`Starting ${processLabel} trading process...`);
       
       // Get market conditions
-      const marketConditions = await this.getMarketConditions();
+      const marketConditions = providedMarketConditions ?? await this.getMarketConditions();
       if (!marketConditions) {
-        console.log('Market data unavailable, pausing pure lowest of 24 evaluations');
+        console.log(`Market data unavailable, pausing ${processLabel} evaluations`);
         return;
       }
 
-      console.log('Market conditions for pure strategy:', marketConditions);
+      console.log(`Market conditions for ${processLabel} strategy:`, marketConditions);
 
       // Evaluate only the trigger rule for pure strategy
       const triggerRule = {
@@ -83,28 +112,28 @@ class TradingService {
         currentValue: marketConditions.lastLow,
         comparisonValue: marketConditions.lowestOf24h
       };
-      console.log('Pure strategy trigger rule:', triggerRule);
+      console.log(`${processLabel} strategy trigger rule:`, triggerRule);
 
       // Check for new collection trigger
       if (triggerRule.isMet) {
-        await this.handlePureTriggerCondition(marketConditions, triggerRule);
+        await this.handlePureTriggerCondition(marketConditions, triggerRule, collectionsRef, collectionLabel);
       }
 
       // Process active collections for pure strategy
-      await this.processPureActiveCollections(marketConditions, triggerRule);
+      await this.processPureActiveCollections(marketConditions, triggerRule, collectionsRef, lossThreshold, collectionLabel);
 
     } catch (error) {
-      console.error('Error in pure lowest of 24 trading process:', error);
+      console.error(`Error in ${processLabel} trading process:`, error);
       throw error;
     }
   }
 
-  async processLowestOf24_3and6(): Promise<void> {
+  async processLowestOf24_3and6(providedMarketConditions?: MarketConditions): Promise<void> {
     try {
       console.log('Starting lowest of 24 3&6 trading process...');
       
       // Get market conditions
-      const marketConditions = await this.getMarketConditions();
+      const marketConditions = providedMarketConditions ?? await this.getMarketConditions();
       if (!marketConditions) {
         console.log('Market data unavailable, pausing lowest of 24 3&6 evaluations');
         return;
@@ -130,7 +159,7 @@ class TradingService {
     }
   }
 
-  private async getMarketConditions(): Promise<MarketConditions | null> {
+  async getMarketConditions(): Promise<MarketConditions | null> {
     try {
       const interval = process.env.INTERVAL || '15m';
       const intervalMs = getIntervalDurationMs(interval);
@@ -422,10 +451,15 @@ class TradingService {
     }
   }
 
-  private async handlePureTriggerCondition(conditions: MarketConditions, triggerRule: RuleEvaluationResult): Promise<void> {
+  private async handlePureTriggerCondition(
+    conditions: MarketConditions,
+    triggerRule: RuleEvaluationResult,
+    collectionsRef: CollectionReference,
+    collectionLabel: string
+  ): Promise<void> {
     try {
       // Check if there's already an active collection
-      const activeCollections = await this.pureCollectionsRef
+      const activeCollections = await collectionsRef
         .where('status', '==', 'active')
         .limit(1)
         .get();
@@ -436,13 +470,13 @@ class TradingService {
         
         // If the active collection has a buy signal, don't refresh it
         if (activeCollection.buySignal) {
-          console.log(`Pure collection ${activeDoc.id} has buy signal - skipping refresh`);
+          console.log(`${collectionLabel} collection ${activeDoc.id} has buy signal - skipping refresh`);
           return;
         }
 
         // If the trigger is from the exact same lowest candle, don't reset
         if (activeCollection.triggerPrice === conditions.lastLow) {
-          console.log(`Pure collection ${activeDoc.id} already triggered at price ${conditions.lastLow} - skipping reset`);
+          console.log(`${collectionLabel} collection ${activeDoc.id} already triggered at price ${conditions.lastLow} - skipping reset`);
           return;
         }
 
@@ -462,11 +496,11 @@ class TradingService {
           updatedAt: now
         });
 
-        console.log(`Reset pure trading collection ${activeDoc.id} due to new trigger`);
+        console.log(`Reset ${collectionLabel} trading collection ${activeDoc.id} due to new trigger`);
         return;
       }
 
-      console.log('Creating new pure trading collection...');
+      console.log(`Creating new ${collectionLabel} trading collection...`);
 
       // Create new collection
       const now = Timestamp.now();
@@ -487,11 +521,11 @@ class TradingService {
         updatedAt: now
       };
 
-      await this.pureCollectionsRef.doc(collectionId).set(newCollection);
-      console.log(`Created new pure trading collection: ${collectionId}`);
+      await collectionsRef.doc(collectionId).set(newCollection);
+      console.log(`Created new ${collectionLabel} trading collection: ${collectionId}`);
 
     } catch (error) {
-      console.error('Error handling pure trigger condition:', error);
+      console.error(`Error handling ${collectionLabel} trigger condition:`, error);
       throw error;
     }
   }
@@ -513,19 +547,25 @@ class TradingService {
     }
   }
 
-  private async processPureActiveCollections(conditions: MarketConditions, triggerRule: RuleEvaluationResult): Promise<void> {
+  private async processPureActiveCollections(
+    conditions: MarketConditions,
+    triggerRule: RuleEvaluationResult,
+    collectionsRef: CollectionReference,
+    lossThreshold: number,
+    collectionLabel: string
+  ): Promise<void> {
     try {
-      const activeCollections = await this.pureCollectionsRef
+      const activeCollections = await collectionsRef
         .where('status', '==', 'active')
         .get();
 
       for (const doc of activeCollections.docs) {
         const collection = doc.data() as TradingCollection;
-        await this.processPureCollection(doc.id, collection, conditions, triggerRule);
+        await this.processPureCollection(doc.id, collection, conditions, triggerRule, collectionsRef, lossThreshold, collectionLabel);
       }
 
     } catch (error) {
-      console.error('Error processing pure active collections:', error);
+      console.error(`Error processing ${collectionLabel} active collections:`, error);
       throw error;
     }
   }
@@ -621,7 +661,10 @@ class TradingService {
     docId: string,
     collection: TradingCollection,
     conditions: MarketConditions,
-    triggerRule: RuleEvaluationResult
+    triggerRule: RuleEvaluationResult,
+    collectionsRef: CollectionReference,
+    lossThreshold: number,
+    collectionLabel: string
   ): Promise<void> {
     try {
       let hasUpdates = false;
@@ -643,8 +686,8 @@ class TradingService {
           };
           updates.status = 'completed';
           hasUpdates = true;
-          console.log(`Pure collection ${docId} completed with profit: ${currentPrice} >= ${buyPrice * PROFIT_THRESHOLD}`);
-        } else if (currentPrice <= buyPrice * LOSS_THRESHOLD) {
+          console.log(`${collectionLabel} collection ${docId} completed with profit: ${currentPrice} >= ${buyPrice * PROFIT_THRESHOLD}`);
+        } else if (currentPrice <= buyPrice * lossThreshold) {
           // Loss exit
           updates.sellSignal = {
             time: Timestamp.now(),
@@ -653,7 +696,7 @@ class TradingService {
           };
           updates.status = 'completed';
           hasUpdates = true;
-          console.log(`Pure collection ${docId} completed with loss: ${currentPrice} <= ${buyPrice * LOSS_THRESHOLD}`);
+          console.log(`${collectionLabel} collection ${docId} completed with loss: ${currentPrice} <= ${buyPrice * lossThreshold}`);
         }
       }
 
@@ -664,17 +707,17 @@ class TradingService {
           price: conditions.livePrice
         };
         hasUpdates = true;
-        console.log(`Buy signal generated for pure collection ${docId} at price ${conditions.livePrice}`);
+        console.log(`Buy signal generated for ${collectionLabel} collection ${docId} at price ${conditions.livePrice}`);
       }
 
       // Apply updates if any
       if (hasUpdates) {
-        await this.pureCollectionsRef.doc(docId).update(updates);
-        console.log(`Updated pure collection ${docId}`);
+        await collectionsRef.doc(docId).update(updates);
+        console.log(`Updated ${collectionLabel} collection ${docId}`);
       }
 
     } catch (error) {
-      console.error(`Error processing pure collection ${docId}:`, error);
+      console.error(`Error processing ${collectionLabel} collection ${docId}:`, error);
       throw error;
     }
   }

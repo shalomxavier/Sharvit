@@ -18,6 +18,10 @@ const App: React.FC = () => {
         } />
         <Route path="/lowest-of-24" element={<LowestOf24 />} />
         <Route path="/pure-lowest-of-24" element={<PureLowestOf24 />} />
+        <Route
+          path="/pure-lowest-of-24-09"
+          element={<PureLowestOf24 collectionName="pure_lowest_of_24_09_collections" title="Pure Lowest of 24 - 0.9% Loss" />}
+        />
         <Route path="/lowest-of-24-3-and-6" element={<LowestOf24_3and6 />} />
       </Routes>
     </Router>

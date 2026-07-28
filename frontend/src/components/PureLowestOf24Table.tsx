@@ -28,14 +28,22 @@ interface PureLowestOf24Collection {
   updatedAt: Timestamp;
 }
 
-const PureLowestOf24Table: React.FC = () => {
+interface PureLowestOf24TableProps {
+  collectionName?: string;
+  title?: string;
+}
+
+const PureLowestOf24Table: React.FC<PureLowestOf24TableProps> = ({
+  collectionName = 'pure_lowest_of_24_collections',
+  title = 'Pure Lowest of 24 Collections'
+}) => {
   const [collections, setCollections] = useState<PureLowestOf24Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(
-      collection(db, 'pure_lowest_of_24_collections'),
+      collection(db, collectionName),
       orderBy('createdAt', 'desc'),
       limit(20)
     );
@@ -59,7 +67,7 @@ const PureLowestOf24Table: React.FC = () => {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [collectionName]);
 
   const formatTimestamp = (timestamp: Timestamp) => {
     return timestamp.toDate().toLocaleString();
@@ -99,7 +107,7 @@ const PureLowestOf24Table: React.FC = () => {
   if (loading) {
     return (
       <div className="bg-white border rounded-lg p-6 shadow-sm">
-        <h3 className="text-xl font-bold mb-4">Pure Lowest of 24 Collections</h3>
+        <h3 className="text-xl font-bold mb-4">{title}</h3>
         <div className="flex items-center justify-center py-8">
           <div className="text-gray-500">Loading...</div>
         </div>
@@ -110,7 +118,7 @@ const PureLowestOf24Table: React.FC = () => {
   if (error) {
     return (
       <div className="bg-white border rounded-lg p-6 shadow-sm">
-        <h3 className="text-xl font-bold mb-4">Pure Lowest of 24 Collections</h3>
+        <h3 className="text-xl font-bold mb-4">{title}</h3>
         <div className="border border-red-400 px-4 py-3 rounded">
           <strong className="font-bold">Error: </strong>
           <span className="block sm:inline">{error}</span>
@@ -121,7 +129,7 @@ const PureLowestOf24Table: React.FC = () => {
 
   return (
     <div className="bg-white border rounded-lg p-6 shadow-sm">
-      <h3 className="text-xl font-bold mb-4">Pure Lowest of 24 Collections</h3>
+      <h3 className="text-xl font-bold mb-4">{title}</h3>
       
       <ProfitLossSummary collections={collections} />
       

@@ -5,7 +5,15 @@ import DataCard from './DataCard';
 import LivePriceBanner from './LivePriceBanner';
 import PureLowestOf24Table from './PureLowestOf24Table';
 
-const PureLowestOf24: React.FC = () => {
+interface PureLowestOf24Props {
+  collectionName?: string;
+  title?: string;
+}
+
+const PureLowestOf24: React.FC<PureLowestOf24Props> = ({
+  collectionName = 'pure_lowest_of_24_collections',
+  title = 'Pure Lowest of 24'
+}) => {
   const navigate = useNavigate();
   const [marketData, setMarketData] = useState<MarketData | null>(null);
   const [previousData, setPreviousData] = useState<MarketData | null>(null);
@@ -144,7 +152,7 @@ const PureLowestOf24: React.FC = () => {
           >
             ←
           </button>
-          <h2 className="text-2xl font-bold">Pure Lowest of 24</h2>
+          <h2 className="text-2xl font-bold">{title}</h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
@@ -175,7 +183,7 @@ const PureLowestOf24: React.FC = () => {
         </div>
 
         <div className="mt-8">
-          <PureLowestOf24Table />
+          <PureLowestOf24Table collectionName={collectionName} title={`${title} Collections`} />
         </div>
       </div>
 

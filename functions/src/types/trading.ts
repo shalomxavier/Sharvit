@@ -77,3 +77,4 @@ export const RULE_LABELS = {
 
 export const PROFIT_THRESHOLD = 1.009; // 100.9%
 export const LOSS_THRESHOLD = 0.982; // 98.2%
+export const LOSS_THRESHOLD_09 = 0.991; // 99.1% (0.9% loss)
